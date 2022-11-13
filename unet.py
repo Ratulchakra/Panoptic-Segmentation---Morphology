@@ -72,7 +72,7 @@ class UNet(nn.Module):
         if self.retain_dim:
             out = F.interpolate(out, self.out_sz)
         # print(out.shape)
-        out = F.softmax(out, 1)
+        # out = F.softmax(out, 1)
         # out = torch.gt(out, 0.5)
         return out
 
@@ -116,11 +116,13 @@ def dice_loss(true, logits, eps=1e-7):
 #################################
 
 def mse_loss(true, pred):
-    true = torch.nn.functional.one_hot(true.to(torch.int64), 21).transpose(1, 3)#.squeeze(-1)
+    true = true.long()
+    true = torch.nn.functional.one_hot(true.to(torch.int64), 21).permute((0, 3, 1, 2))
     # print(true.shape)
     # true_flat = torch.flatten(true, start_dim = 2)
     # pred_flat = torch.flatten(pred, start_dim = 2)
     # print(true.shape , pred.shape)
+    pred = F.softmax(pred, 1)
     x = (true - pred)**2
     loss = torch.mean(x)
     return loss
@@ -168,6 +170,7 @@ def trial_cross_entropy(predicton, target):
     input should be: (batch, class, H, W)
     target should be: (batch, H, W)
     """
+    target = target.long()
     loss = torch.nn.CrossEntropyLoss()
     return loss(predicton, target)
 
