@@ -107,7 +107,7 @@ train_loss = []
 for i in range(epochs):
     optimizer.zero_grad()
     pred_out = model(I)
-    loss = mse_ce_combo(pred_out, seg_gt.long())
+    loss = mse_ce_combo(pred_out, seg_gt, alpha=0.5)
     loss.backward()
     optimizer.step()
     train_loss.append(loss.item())
