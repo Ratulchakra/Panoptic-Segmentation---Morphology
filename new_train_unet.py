@@ -71,7 +71,7 @@ with torch.no_grad():
 
             optimizer.zero_grad()
             pred_out=model(I)
-            loss = mse_ce_combo(pred_out, seg_gt, alpha=1)
+            loss = mse_ce_combo(pred_out, seg_gt, alpha=0)
             loss.requires_grad_()
             loss.backward()
             optimizer.step()
@@ -90,7 +90,7 @@ with torch.no_grad():
             seg_gt=seg_gt.to(device)
 
             pred_out=model(I)
-            loss = mse_ce_combo(pred_out, seg_gt, alpha=1)
+            loss = mse_ce_combo(pred_out, seg_gt, alpha=0)
             val_loss += loss.item()
             tbar.set_description('Validating Now Batch: {}/{} , with Batch Loss {}'. \
                                   format(i, n, loss.item()) )

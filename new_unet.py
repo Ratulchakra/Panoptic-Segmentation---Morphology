@@ -83,7 +83,7 @@ class UNet(nn.Module):
         # print(out.shape)
         # out = F.softmax(out, 1)
         # out = torch.gt(out, 0.5)
-        out = self.sig(out)
+        # out = self.sig(out)
         return out
 
 #############################
