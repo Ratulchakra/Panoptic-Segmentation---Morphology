@@ -2,10 +2,11 @@ import torch
 from kornia.morphology import dilation,erosion
 import torchvision.transforms as transforms
 import torch.nn.functional as F
+# from torchmetrics import StructuralSimilarityIndexMeasure
 
 
-# device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-device = "cpu"
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+# device = "cpu"
 NUM_CLASSES = 21
 
 
@@ -113,68 +114,67 @@ def find_gt_skmaps(seg_mask_gt,inst_mask_gt):
 def gt_sk_map(seg_mask_gt,inst_mask_gt):
     # seg_unique=torch.unique(seg_mask_gt)
     # inst_unique=torch.unique(inst_mask_gt)
-    net_gt=torch.zeros((NUM_CLASSES,)+seg_mask_gt.shape).to(device)
-    net_gt = net_gt.permute((1,0,2,3))   # B, N, H, W
-    b, n, _, _ = net_gt.shape
+    sk_gt=torch.zeros((NUM_CLASSES,)+seg_mask_gt.shape).to(device)
+    sk_gt = sk_gt.permute((1,0,2,3))   # B, N, H, W
+    b, n, h, w = sk_gt.shape
 
-    # seg_mask_gt = torch.nn.functional.one_hot(seg_mask_gt.to(torch.int64), 21).permute((0, 3, 1, 2))
+    # sk_mask_gt = torch.nn.functional.one_hot(sk_mask_gt.to(torch.int64), 21).permute((0, 3, 1, 2))
 
     for i in range(b):
         inst = inst_mask_gt[i]
-        net = net_gt[i]
-        print(net.shape)
+        sk = sk_gt[i]
+        # print(sk.shape)
         inst_unique=torch.unique(inst)
-        print(inst_unique)
-        inst_gt = torch.nn.functional.one_hot(inst.to(torch.int64), len(inst_unique)).permute((2, 0, 1))
-        print(inst_gt.shape)
-        seg_loc = []
-        for j in range(inst_gt.shape[0]):
-            inst_loc=torch.where(inst_gt[j]>0)
-            idx,idy=torch.median(inst_loc[0]),torch.median(inst_loc[1])
-            seg_loc.append(seg_mask_gt[i][idx,idy].long())
-        print(seg_loc)
-        inst_sk = find_sk_map(inst_gt)
-        print(inst_sk.shape)
-        for j in range(inst_sk.shape[0]):
-            net[seg_loc[j]] = inst_sk[j]
-    print(net_gt.shape)
-    return net_gt
+        # print(inst_unique)
+        #inst_gt = torch.nn.functional.one_hot(inst.to(torch.int64), len(inst_unique)).permute((2, 0, 1))    #NxHXW
+
+        loc_list = []
+        Inst_list=[]
+        for uniq in inst_unique:
+           inst_single=(inst==uniq)
+           inst_loc=torch.where(inst_single>0)
+          #  print(inst_loc)
+          #  idx,idy=torch.median(inst_loc[0]),torch.median(inst_loc[1]) #have to check idx ,idy
+           idx, idy = inst_loc[0][0], inst_loc[1][0]
+           seg_loc=seg_mask_gt[i][idx,idy]   # Why do this? It will only give the value at that location not the actual location
+           Inst_list.append(inst_single)
+           loc_list.append(int(seg_loc.item()))  # This is not a list of locations, but of unique values
+    
+        Inst_tensor=torch.stack(Inst_list).type(torch.float)
+        inst_sk = find_sk_map(Inst_tensor)
+
+        # print(inst_sk.shape)
+        loc_list.pop(0)
+        inst_sk = inst_sk[1:]
+
+        # print(inst_sk.shape)
+        # print(loc_list)
+        # sk[loc_list] = inst_sk
+        for j in range(len(loc_list)):
+          sk[loc_list[j]] += inst_sk[j]
+        # sk[0] = 0
+        sk_gt[i]=sk
+    # print(sk_gt.shape)
+    return sk_gt
 
 #########################################################################
 
 
+#out shape->(4,21,128,128)
+def new_loss(pred,seg_gt,inst_gt):
+    sk_gt=gt_sk_map(seg_gt,inst_gt)
+    sk_gt = sk_gt.to(device)
+    mse_loss=torch.mean(torch.square(sk_gt-pred))
+    mae_loss = torch.mean(torch.abs(sk_gt-pred))
+    loss = mae_loss + mse_loss
+    return loss
+
+# def ss_loss(pred,seg_gt,inst_gt):
+#     sk_gt=gt_sk_map(seg_gt,inst_gt)
+#     ssim = StructuralSimilarityIndexMeasure().to(device)
+#     return 1 - ssim(pred, sk_gt)
 
 
-
-
-
-def  sk_loss(outs, target_seg,target_inst):
-    batch_size,H,W=target_seg.shape
-    loss=0
-    for b_idx in range(batch_size):
-        seg_mask_gt=target_seg[b_idx]
-        inst_mask_gt=target_inst[b_idx]
-        net_gt_mask=find_gt_skmaps(seg_mask_gt,inst_mask_gt)
-        for out in outs:
-            temp=net_gt_mask.unsqueeze(0)
-            #temp=net_gt_mask
-            #print(temp.shape,out.shape[1:])
-            new_gt_out = F.interpolate(temp,(out.shape[1],out.shape[2]))#,mode='linear')
-            new_gt_out=new_gt_out.squeeze(0)
-            I=(new_gt_out>0).type(torch.float)
-        
-            out1= out*I
-            out0=(1-out)*(1-I)
-
-            gt1=new_gt_out
-            gt0=(1-new_gt_out)*(1-I)
-
-      
-            loss=loss+torch.sum(torch.square(out1-gt1))+torch.sum(torch.square(out0-gt0))
-            #loss=loss+torch.mean(torch.square(new_gt_out-out))
-            #loss=loss+torch.mean(torch.abs(new_gt_out-out))
-
-    return loss,net_gt_mask
 
 def  sk_loss1(outs, target_seg,target_inst):
     #print(outs[1].shape)
