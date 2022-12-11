@@ -175,6 +175,14 @@ def new_loss(pred,seg_gt,inst_gt):
 #     return 1 - ssim(pred, sk_gt)
 
 
+def lp_norm(pred,seg_gt,inst_gt, p = 3, root = False):
+    sk_gt=gt_sk_map(seg_gt,inst_gt)
+    sk_gt = sk_gt.to(device)
+    lp_loss = torch.mean(torch.pow(sk_gt - pred , p))
+    return torch.pow(lp_loss, 1/p) if root else lp_loss
+
+
+
 
 def  sk_loss1(outs, target_seg,target_inst):
     #print(outs[1].shape)
