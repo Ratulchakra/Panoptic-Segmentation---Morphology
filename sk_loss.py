@@ -169,22 +169,96 @@ def new_loss(pred,seg_gt,inst_gt):
     loss = mae_loss + mse_loss
     return loss
 
-# def ss_loss(pred,seg_gt,inst_gt):
-#     sk_gt=gt_sk_map(seg_gt,inst_gt)
-#     ssim = StructuralSimilarityIndexMeasure().to(device)
-#     return 1 - ssim(pred, sk_gt)
+######################################################################
+
+def gt_sk_map_with_semantics(seg_mask_gt,inst_mask_gt):
+    # seg_unique=torch.unique(seg_mask_gt)
+    # inst_unique=torch.unique(inst_mask_gt)
+    sk_gt=torch.zeros((NUM_CLASSES,)+seg_mask_gt.shape).to(device)
+    sk_gt = sk_gt.permute((1,0,2,3))   # B, N, H, W
+    b, n, h, w = sk_gt.shape
+
+    # sk_mask_gt = torch.nn.functional.one_hot(sk_mask_gt.to(torch.int64), 21).permute((0, 3, 1, 2))
+    seg_channels = torch.nn.functional.one_hot(seg_mask_gt.to(torch.int64), 21).permute((0, 3, 1, 2))
+    # print(seg_channels.shape)
+
+    for i in range(b):
+        inst = inst_mask_gt[i]
+        sk = sk_gt[i]
+        # print(sk.shape)
+        inst_unique=torch.unique(inst)
+        # print(inst_unique)
+        #inst_gt = torch.nn.functional.one_hot(inst.to(torch.int64), len(inst_unique)).permute((2, 0, 1))    #NxHXW
+
+        loc_list = []
+        Inst_list=[]
+        for uniq in inst_unique:
+           inst_single=(inst==uniq)
+           inst_loc=torch.where(inst_single>0)
+          #  print(inst_loc)
+          #  idx,idy=torch.median(inst_loc[0]),torch.median(inst_loc[1]) #have to check idx ,idy
+           idx, idy = inst_loc[0][0], inst_loc[1][0]
+           seg_loc=seg_mask_gt[i][idx,idy]   # Why do this? It will only give the value at that location not the actual location
+           Inst_list.append(inst_single)
+           loc_list.append(int(seg_loc.item()))  # This is not a list of locations, but of unique values
+    
+        Inst_tensor=torch.stack(Inst_list).type(torch.float)
+        inst_sk = find_sk_map(Inst_tensor)
+
+        # print(inst_sk.shape)
+        loc_list.pop(0)
+        inst_sk = inst_sk[1:]
+
+        # print(inst_sk.shape)
+        # print(loc_list)
+        # sk[loc_list] = inst_sk
+        for j in range(len(loc_list)):
+          sk[loc_list[j]] += inst_sk[j]
+        sk[0] = seg_channels[i][0]
+        sk_gt[i]=sk
+    # print(sk_gt.shape)
+    return sk_gt
+
+######################################################################
+
+# def conditions(x):
+#     if x < 0:
+#         return 0
+#     elif x > 1:
+#         return 1
+#     else:
+#         return x
 
 
-def lp_norm(pred,seg_gt,inst_gt, p = 3, root = False):
-    sk_gt=gt_sk_map(seg_gt,inst_gt)
+def lp_norm(pred,seg_gt,inst_gt, p = 3):
+    sk_gt=gt_sk_map_with_semantics(seg_gt,inst_gt)
     sk_gt = sk_gt.to(device)
     lp_loss = torch.mean(torch.pow(sk_gt - pred , p))
-    return torch.pow(lp_loss, 1/p) if root else lp_loss
+    return torch.pow(lp_loss, 1/p)
 
 
+def lp_ker_loss(pred,seg_gt,inst_gt, p = 3):
+    # if custom:
+    #   pred = torch.tensor(map(conditions, pred))
+    sk_gt=gt_sk_map(seg_gt,inst_gt)
+    sk_gt = sk_gt.to(device)
+    loss = 0
+    for i in range(1, p+1):
+      loss += torch.pow(torch.mean(torch.pow(sk_gt - pred , p)) , 1/p)
+    return loss
 
 
 def  sk_loss1(outs, target_seg,target_inst):
     #print(outs[1].shape)
     loss=torch.mean(outs)
     return(loss)
+
+def r2_loss (pred,seg_gt,inst_gt):
+    sk_gt=gt_sk_map(seg_gt,inst_gt)
+    sk_gt = sk_gt.to(device)
+
+    sk_mean = torch.mean(pred, dim=1)
+    ss_tot = torch.sum((pred - sk_mean) ** 2)
+    ss_res = torch.sum((pred - sk_gt) ** 2)
+    r2 = 1 - ss_res / ss_tot
+    return r2
