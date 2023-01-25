@@ -85,6 +85,16 @@ def mIoU (outputs: torch.Tensor, labels: torch.Tensor):
     iou_score = torch.sum(intersection) / torch.sum(union)
     return iou_score
 
+def accuracy (outputs: torch.Tensor, labels: torch.Tensor):
+    # labels = torch.nn.functional.one_hot(labels.to(torch.int64), 21).permute((0, 3, 1, 2))
+    outs = outputs.clone().detach()
+    # outs = F.sigmoid(outs)
+    outs = torch.argmax(outs, axis = 1)
+    # print(outs.shape)
+    # outs = torch.nn.functional.one_hot(outs.to(torch.int64), 21).permute((0, 3, 1, 2))
+
+    # Accuracy measure
+    return torch.mean((labels == outs).to(torch.float64))
 
 def precision (outputs: torch.Tensor, labels: torch.Tensor):
     labels = torch.nn.functional.one_hot(labels.to(torch.int64), 21).permute((0, 3, 1, 2))
@@ -108,6 +118,7 @@ def recall (outputs: torch.Tensor, labels: torch.Tensor):
     intersection = torch.logical_and(labels, outs)
     return torch.sum(intersection)/torch.sum(labels)
 
+###############################################
 def recognition_quality (outputs: torch.Tensor, labels: torch.Tensor):
     labels = torch.nn.functional.one_hot(labels.to(torch.int64), 21).permute((0, 3, 1, 2))
     outs = outputs.clone().detach()
@@ -120,7 +131,33 @@ def recognition_quality (outputs: torch.Tensor, labels: torch.Tensor):
     return torch.sum(2*intersection)/torch.sum(labels + outs)
 
 def segmentation_quality (outputs: torch.Tensor, labels: torch.Tensor):
-    pass
+    labels = torch.nn.functional.one_hot(labels.to(torch.int64), 21).permute((0, 3, 1, 2))
+    outs = outputs.clone().detach()
+    outs = torch.argmax(outs, axis = 1)
+    outs = torch.nn.functional.one_hot(outs.to(torch.int64), 21).permute((0, 3, 1, 2))
+
+    intersection = torch.logical_and(labels, outs)
+    union = torch.logical_or(labels, outs)
+    iou_score = torch.sum(intersection, dim = 1) / torch.sum(union, dim = 1)
+    print(iou_score.shape)
+    return torch.sum(iou_score)/torch.sum(intersection)
+
+def panoptic_quality(outputs: torch.Tensor, labels: torch.Tensor):
+    return segmentation_quality(outputs, labels) * recognition_quality(outputs, labels)
+
+###############################################
+
+
+def r2_loss (outputs: torch.Tensor, labels: torch.Tensor):
+    # labels = torch.nn.functional.one_hot(labels.to(torch.int64), 21).permute((0, 3, 1, 2))
+    outs = outputs.clone().detach()
+    outs = torch.argmax(outs, axis = 1)
+
+    label_mean = torch.mean(labels, dim=1)
+    ss_tot = torch.sum((labels - label_mean) ** 2)
+    ss_res = torch.sum((labels - outs) ** 2)
+    r2 = 1 - ss_res / ss_tot
+    return r2
 
 ##########################################
 
